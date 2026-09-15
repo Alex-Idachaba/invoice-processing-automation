@@ -1,0 +1,825 @@
+{
+  "name": "Invoice Processing",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "4c79bf95-e50d-417e-9b14-719d70ce7748",
+        "options": {
+          "binaryPropertyName": "invoiceFile"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -2816,
+        160
+      ],
+      "id": "06313b09-e579-4ab2-a326-0121d3c97ad3",
+      "name": "Webhook",
+      "webhookId": "4c79bf95-e50d-417e-9b14-719d70ce7748"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "dcc9e2bf-bdbc-4ee6-94bc-bce77a1e4301",
+              "leftValue": "={{ $binary.invoiceFile0.mimeType }}",
+              "rightValue": "image",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -2608,
+        160
+      ],
+      "id": "29b12327-6f06-4895-a0cf-6ce4716f4505",
+      "name": "Is File-Type Image?"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "invoiceFile0",
+        "options": {
+          "keepSource": "both"
+        }
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -2384,
+        256
+      ],
+      "id": "7f2571ce-f2db-4138-8c8c-7f46c436f220",
+      "name": "Extract Invoice Raw Text from PDF"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "={{ $json.text }}"
+            },
+            {
+              "role": "system",
+              "content": "You are extracting structured data from raw text pulled from an invoice PDF. The text may have labels and values in a different order than they appear on the printed page, because it was extracted from the PDF's layout rather than its visual reading order. Do not assume a value immediately follows its label in the text.\n\nExtract exactly three fields:\n\n1. invoice_id — The invoice number, always in the format INV-XX-#### (e.g., INV-AC-1001). Search the full text for a string matching this pattern; do not use any other number (dates, amounts, quantities) as the invoice ID.\n2. vendor — The company that issued the invoice and is requesting payment. This is NOT the company listed under \"Bill To\" — \"Bill To\" always refers to the customer being billed, never the vendor. The vendor name typically appears near the top of the document, separate from the \"Bill To\" section. If the vendor field is missing, blank, or contains only a placeholder character (such as a single period, dash, or \"N/A\") with no real company name, return null for this field — do not treat a placeholder as a valid vendor name.\n3. amount — The final total amount owed on the invoice, often labeled \"Total,\" \"Balance Due,\" or similar. If multiple dollar figures appear (e.g., subtotal, tax, and total), use the final total — the largest figure that represents subtotal + tax, not the subtotal alone or the tax alone.\n\nReturn your answer as strict JSON only, with no preamble, no explanation, and no markdown formatting — just the raw JSON object, in exactly this shape:\n{\"invoice_id\": \"string or null\", \"vendor\": \"string or null\", \"amount\": number or null}\n\nExample 1:\nInput text: INVOICE\\n# INV-AC-1001\\nAcme Supplies\\nBill To:\\nNorthgate Retail Ltd\\nAug 1, 2026\\nAug 31, 2026\\n$450.00\\nDate:\\nDue Date:\\nBalance Due:\\nItem Quantity Rate Amount\\nOffice Supplies Restock 1 $450.00 $450.00\\n$450.00\\n$0.00\\n$450.00\\nSubtotal:\\nTax (0%):\\nTotal:\n\nOutput: {\"invoice_id\": \"INV-AC-1001\", \"vendor\": \"Acme Supplies\", \"amount\": 450.00}\n\nExample 2:\nInput text: INVOICE\\n# INV-BR-3007\\n.\\nBill To:\\nNorthgate Retail Ltd\\nAug 10, 2026\\nAug 31, 2026\\n$150.00\\nDate:\\nDue Date:\\nBalance Due:\\nItem Quantity Rate Amount\\nOffice Cleaning Service 1 $150.00 $150.00\\n$150.00\\n$0.00\\n$150.00\\nSubtotal:\\nTax (0%):\\nTotal:\n\nOutput: {\"invoice_id\": \"INV-BR-3007\", \"vendor\": null, \"amount\": 150.00}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        -1872,
+        256
+      ],
+      "id": "75b59118-89d5-4f53-8314-372a65cb661a",
+      "name": "Extract Structured Data From Raw Text"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "86b44121-eb7c-49b1-9d91-a5a1b40eb964",
+              "name": "=invoice_id",
+              "value": "={{ JSON.parse($json.output[0].content[0].text).invoice_id }}",
+              "type": "string"
+            },
+            {
+              "id": "461dd827-ddf6-45bf-9a8d-46ef1e4c1533",
+              "name": "vendor",
+              "value": "={{ JSON.parse($json.output[0].content[0].text).vendor }}",
+              "type": "string"
+            },
+            {
+              "id": "d2edd419-35f5-472f-b404-1de4d8f71d67",
+              "name": "amount",
+              "value": "={{ JSON.parse($json.output[0].content[0].text).amount }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -1520,
+        256
+      ],
+      "id": "09a782bb-dca9-4e35-a1e0-14856e6ea60b",
+      "name": "Parse Invoice Data"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c87e3b20-34e1-45df-9e76-637fb19f7198",
+              "leftValue": "={{ $json.invoice_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "c7e6e593-6321-46b3-bc87-8f9b8516c91f",
+              "leftValue": "={{ $json.vendor }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "63518f84-bd4d-41a6-b812-7533b184f08d",
+              "leftValue": "={{ $json.amount }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1296,
+        256
+      ],
+      "id": "1e8507f5-71c9-4392-a083-af7530fa35b9",
+      "name": "Is Invoice Data Not Empty?"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list",
+          "cachedResultName": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "invoices_invalid",
+          "mode": "list",
+          "cachedResultName": "invoices_invalid"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "raw_payload": "={{ $json.raw_payload }}",
+            "reason": "={{ $json.reason }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "raw_payload",
+              "displayName": "raw_payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "object",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -864,
+        448
+      ],
+      "id": "d2f06d1d-909e-4ae5-a22f-8e26f5542b80",
+      "name": "Insert and Log Invalid Invoices"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "95681bbc-b090-469c-b6a4-4a49fab38415",
+              "name": "reason",
+              "value": "={{\n  (() => {\n    if (!$json.invoice_id) return 'Missing Invoice ID';\n    if (!$json.vendor) return 'Missing Vendor';\n    if (!$json.amount || $json.amount <= 0) return 'Invalid Amount';\n    return 'Valid';\n  })()\n}}",
+              "type": "string"
+            },
+            {
+              "id": "2c33153b-b8f9-4257-b56d-c85826139538",
+              "name": "raw_payload",
+              "value": "={{ JSON.stringify($json) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -1072,
+        448
+      ],
+      "id": "0c9afbbc-e66d-4551-b185-13e75df4dc5d",
+      "name": "Reason for Invalid Invoice"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO invoices (invoice_id, vendor, amount, extracted_data)\nVALUES ($1, $2, $3, $4)\nON CONFLICT (invoice_id) DO NOTHING\nRETURNING id;",
+        "options": {
+          "queryReplacement": "={{ $json.invoice_id }},{{ $json.vendor }},{{ $json.amount }},{{ JSON.stringify($json) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -1072,
+        160
+      ],
+      "id": "f4d97a1a-0223-4073-af91-c31958c48ca2",
+      "name": "Insert Invoice with Dedup Check(Idempotent)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c18b3e27-67fb-48fd-8871-d329ed54053b",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -848,
+        160
+      ],
+      "id": "6faa8980-ab07-4e6c-98a2-2f5db812217a",
+      "name": "Check Duplicate (ID Returned?)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f982e257-3fda-47d8-be15-33f2d321a1af",
+              "name": "reason",
+              "value": "Duplicate Invoice ID",
+              "type": "string"
+            },
+            {
+              "id": "227d2ecf-34ca-45ed-86d0-483831bf191b",
+              "name": "pay_load",
+              "value": "={{ JSON.stringify($('Parse Invoice Data').item.json) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -608,
+        320
+      ],
+      "id": "911da3b0-26bc-447c-b241-f7af199803d1",
+      "name": "Prepare Duplicate Log Entry"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "invoices_invalid",
+          "mode": "list",
+          "cachedResultName": "invoices_invalid"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "reason": "={{ $json.reason }}",
+            "raw_payload": "={{ $json.pay_load }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "raw_payload",
+              "displayName": "raw_payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "object",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -416,
+        320
+      ],
+      "id": "5564f17e-8973-4e45-84c8-cf3ab1382b18",
+      "name": "Insert Duplicate Log"
+    },
+    {
+      "parameters": {
+        "jsCode": "const vendorRanges = {\n  \"Acme Supplies\": { min: 200, max: 800 },\n  \"Northwind Logistics\": { min: 1000, max: 5000 }\n};\n\nconst allItems = $input.all();\n\nfor (const item of allItems) {\n  const vendor = $('Parse Invoice Data').item.json.vendor;\n  const amount = $('Parse Invoice Data').item.json.amount;\n  const invoiceId = $('Parse Invoice Data').item.json.invoice_id;\n\n  const range = vendorRanges[vendor];\n\n  item.json.vendor = vendor;\n  item.json.amount = amount;\n  item.json.invoice_id = invoiceId;\n\n  if (!range) {\n    item.json.evaluation_status = \"flagged\";\n  } else if (amount >= range.min && amount <= range.max) {\n    item.json.evaluation_status = \"approved\";\n  } else {\n    item.json.evaluation_status = \"flagged\";\n  }\n}\n\nreturn allItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        144
+      ],
+      "id": "fe494863-4d61-4b20-8149-256c2c0bb9db",
+      "name": "Evaluate Amount (Rule-Based)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "94d407c3-2fcd-411a-b1e2-31579c038ca4",
+              "leftValue": "={{ $json.evaluation_status }}",
+              "rightValue": "approved",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -256,
+        144
+      ],
+      "id": "d66a94f1-13aa-4602-b789-f4d63a341edd",
+      "name": "Check Evaluation Result"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE invoices\nSET status = 'approved', validated_at = now()\nWHERE id = $1;",
+        "options": {
+          "queryReplacement": "={{ $json.id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        0,
+        0
+      ],
+      "id": "ebd2f8a3-5228-4e02-a1ca-b602077b53a9",
+      "name": "Update Invoice - Approved"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE invoices\nSET status = 'flagged'\nWHERE id = $1;",
+        "options": {
+          "queryReplacement": "={{ $json.id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        0,
+        224
+      ],
+      "id": "70de6398-913a-4dae-af3d-f4adb5f4d9b7",
+      "name": "Update Invoice - Flagged"
+    },
+    {
+      "parameters": {
+        "sendTo": "reviewer@company.com",
+        "subject": "=Invoice Flagged for Review: {{ $('Check Evaluation Result').item.json.invoice_id }}",
+        "emailType": "text",
+        "message": "=An invoice has been flagged for manual review.\n\nInvoice ID: {{ $('Check Evaluation Result').item.json.invoice_id }}\nVendor: {{ $('Check Evaluation Result').item.json.vendor }}\nAmount: {{ $('Check Evaluation Result').item.json.amount }}\n\nThis invoice fell outside the expected amount range for this vendor and requires human approval before processing.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        224
+      ],
+      "id": "bcfd8aba-d8f6-4d22-a000-3c5e2059c238",
+      "name": "Notify Reviewer - Flagged Invoice",
+      "webhookId": "f409ba64-a9de-4b0b-9f54-6f4b505e5534"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ocr.yourdomain.com/ocr",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "image",
+              "inputDataFieldName": "=invoiceFile0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -2384,
+        96
+      ],
+      "id": "2e1762c9-3d16-4479-a052-80b928285b74",
+      "name": "Call OCR Service"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "78cca149-598f-4ceb-be68-9c13271ba0d8",
+              "leftValue": "={{ $json.text.length }}",
+              "rightValue": 20,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -2144,
+        256
+      ],
+      "id": "79d74405-b082-4f87-b9ad-677822f353ff",
+      "name": "Check Text Layer Present"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Is File-Type Image?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is File-Type Image?": {
+      "main": [
+        [
+          {
+            "node": "Call OCR Service",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Invoice Raw Text from PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Invoice Raw Text from PDF": {
+      "main": [
+        [
+          {
+            "node": "Check Text Layer Present",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Structured Data From Raw Text": {
+      "main": [
+        [
+          {
+            "node": "Parse Invoice Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Invoice Data": {
+      "main": [
+        [
+          {
+            "node": "Is Invoice Data Not Empty?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Invoice Data Not Empty?": {
+      "main": [
+        [
+          {
+            "node": "Insert Invoice with Dedup Check(Idempotent)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reason for Invalid Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reason for Invalid Invoice": {
+      "main": [
+        [
+          {
+            "node": "Insert and Log Invalid Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Invoice with Dedup Check(Idempotent)": {
+      "main": [
+        [
+          {
+            "node": "Check Duplicate (ID Returned?)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Duplicate (ID Returned?)": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Amount (Rule-Based)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Duplicate Log Entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Duplicate Log Entry": {
+      "main": [
+        [
+          {
+            "node": "Insert Duplicate Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Amount (Rule-Based)": {
+      "main": [
+        [
+          {
+            "node": "Check Evaluation Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Evaluation Result": {
+      "main": [
+        [
+          {
+            "node": "Update Invoice - Approved",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Invoice - Flagged",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Invoice - Flagged": {
+      "main": [
+        [
+          {
+            "node": "Notify Reviewer - Flagged Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call OCR Service": {
+      "main": [
+        [
+          {
+            "node": "Extract Structured Data From Raw Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Text Layer Present": {
+      "main": [
+        [
+          {
+            "node": "Extract Structured Data From Raw Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Call OCR Service",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "3f6c65c0-e053-4c67-87f9-105b0f035a60",
+  "meta": {
+    "instanceId": "YOUR_N8N_INSTANCE_ID"
+  },
+  "nodeGroups": [],
+  "id": "NTxwIlImOoZNbFqV",
+  "tags": []
+}

@@ -1,0 +1,8 @@
+# Environment variables
+.env
+
+# Cloudflare setup
+cloudflared.exe
+
+# Virtual environment
+venv/
