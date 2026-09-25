@@ -1,29 +1,61 @@
 # Invoice Processing Automation
 
-**Pattern:** Evaluator-Optimizer
+**Pattern:** Evaluator-Optimizer · **Stack:** n8n, Python, Flask + pytesseract OCR, Cloudflare Tunnel, PostgreSQL · **Status:** Complete (tested with sample invoices)
 
-Automated invoice intake that extracts data from PDFs and scanned images, validates it against expected vendor ranges, and flags exceptions for human review instead of approving everything blindly.
+Reads incoming invoices from PDFs and scanned images, extracts the key fields, checks each amount against the vendor's expected range, and approves clean invoices automatically. Anything questionable is flagged for a person instead of being paid blindly.
 
-## Problem
+**Property management application:** contractor and vendor invoices (plumbers, electricians, cleaners, landscapers) checked against expected amounts before approval.
 
-Manual invoice processing means someone opens every invoice, keys in vendor and amount by hand, and eyeballs whether the numbers look right — slow, error-prone, and impossible to scale past a handful of invoices a day.
+---
 
-## Build
+## The problem
 
-An n8n workflow triggered by webhook, with a mimeType-based router splitting PDFs from scanned images. Images are sent to a self-hosted OCR service (Flask + pytesseract) reachable through a persistent Cloudflare Tunnel, so n8n can call it without exposing any infrastructure publicly. Extracted data is parsed into structured fields, then run through the Evaluator-Optimizer pattern: a rule-based evaluator checks the amount against expected vendor ranges, looping back for re-extraction or flagging for human review on failure rather than approving automatically. Every invoice lands in one of two Postgres tables — a full, queryable record of what came in and what happened to it.
+Manual invoice processing means someone opens every invoice, types in the vendor and amount, and eyeballs whether the numbers look right. It's slow, error-prone, and doesn't scale past a handful of invoices a day. There's also no searchable record of what came in and what happened to it.
 
-## Outcome
+## How it works
 
-Manual data entry disappears for invoices that fall within range, and the ones that don't get flagged instead of quietly approved or lost in an inbox.
+Webhook intake → file-type routing (PDF or image) → text extraction (direct for PDFs, OCR for images) → field parsing → range evaluation → approve, re-extract, or flag for review → log to PostgreSQL
 
-## Reliability Notes
+- **Intake:** a webhook trigger, so the workflow can sit behind an upload form, an email forwarding rule, or a shared-drive watcher.
+- **Routing:** a mimeType-based router sends PDFs to direct text extraction and scanned images to OCR.
+- **OCR service:** a self-hosted Flask + pytesseract service, reachable through a persistent Cloudflare Tunnel, so n8n can call it without exposing any public infrastructure.
+- **Parsing:** extracted text is converted into structured fields: vendor, amount, date, and line items.
+- **Evaluation (Evaluator-Optimizer):** a rule-based evaluator checks the amount against the vendor's expected range. In range → approved. Out of range → loops back for re-extraction, then flags for human review if it still fails.
+- **Record:** every invoice lands in one of two PostgreSQL tables, giving a full, queryable history of what was processed and what needed review.
 
-This project is a clean example of the full ladder in one build: input validation on extracted data, a defined error/retry path when evaluation fails, and human fallback for anything the evaluator can't confidently approve.
+## Workflow structure
 
-## Stack
+- **Main workflow:** Invoice Intake, Extraction & Evaluation
+- **External service:** OCR microservice (Flask + pytesseract), not an n8n sub-workflow
 
-n8n, Python, self-hosted Flask + pytesseract OCR, Cloudflare Tunnel, Postgres
+## Reliability
 
-## Status
+| Rung | How it shows up |
+|---|---|
+| Input validation | Extracted fields are validated before the evaluator trusts them |
+| Error handling / retry | A failed evaluation loops back for re-extraction instead of passing silently |
+| Logging | Every invoice is written to PostgreSQL, approved or flagged |
+| Human fallback | Anything the evaluator can't confidently approve goes to a person |
 
-Complete.
+## Repository contents
+
+- n8n workflow export (JSON)
+- Python OCR service (Flask + pytesseract)
+- Workflow screenshots
+
+## Running it yourself
+
+1. Import the workflow JSON into n8n.
+2. Create n8n credentials for PostgreSQL. Credentials are **not** included in the export.
+3. Run the OCR service locally and expose it through your own Cloudflare Tunnel (or any HTTPS endpoint), then point the workflow's OCR request at that URL.
+4. Create the two PostgreSQL tables used by the workflow.
+5. Set expected amount ranges for your vendors, then send a test invoice to the webhook URL.
+
+## Limitations
+
+- Range checks are rule-based. New vendors need a range defined before they can be auto-approved.
+- OCR accuracy depends on scan quality; low-quality images are more likely to be flagged.
+
+---
+
+Built by [Alex Idachaba](https://alexidachaba.com) — AI automation for property management operations.
